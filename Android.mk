@@ -35,8 +35,14 @@ sepolicy_build_files := security_classes \
                         mls \
                         policy_capabilities \
                         te_macros \
+                        obj_perm_sets \
+                        loadable_module \
+                        file_patterns \
+                        misc_macros \
+                        misc_patterns \
                         attributes \
                         ioctl_macros \
+                        *.if \
                         *.te \
                         roles \
                         users \

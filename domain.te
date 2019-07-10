@@ -184,6 +184,9 @@ neverallow {
   -vold
   -dumpstate
   -system_server
+  -systemd_sysctl_t
+  -systemd_machined_t
+  -unconfined_t
   userdebug_or_eng(`-procrank')
   userdebug_or_eng(`-perfprofd')
 } self:capability sys_ptrace;
@@ -195,19 +198,38 @@ neverallow {
   -init
   -ueventd
   -vold
+  -systemd_tmpfiles_t
+  -systemd_importd_t
+  -initrc_t
+  -unconfined_t
 } self:capability mknod;
 
 # Limit raw I/O to these whitelisted domains.
-neverallow { domain -kernel -init -recovery -ueventd -watchdogd -healthd -vold -uncrypt -tee } self:capability sys_rawio;
+neverallow {
+  domain
+  -kernel
+  -init
+  -recovery
+  -ueventd
+  -watchdogd
+  -healthd
+  -vold
+  -uncrypt
+  -tee
+  -systemd_sysctl_t
+  -systemd_gpt_generator_t
+  -initrc_t
+  -unconfined_t
+} self:capability sys_rawio;
 
 # No process can map low memory (< CONFIG_LSM_MMAP_MIN_ADDR).
 neverallow domain self:memprotect mmap_zero;
 
 # No domain needs mac_override as it is unused by SELinux.
-neverallow domain self:capability2 mac_override;
+neverallow { domain -init_t } self:capability2 mac_override;
 
 # Only recovery needs mac_admin to set contexts not defined in current policy.
-neverallow { domain -recovery } self:capability2 mac_admin;
+neverallow { domain -recovery -init_t } self:capability2 mac_admin;
 
 # Only init should be able to load SELinux policies.
 # The first load technically occurs while still in the kernel domain,
@@ -226,7 +248,9 @@ neverallow { domain -init } security_file:{ dir file lnk_file } { relabelfrom re
 # Only init and system_server can create/setattr directories with this type.
 # init is for init.rc mkdir /data/security.
 # system_server is for creating subdirectories under /data/security.
-neverallow { domain -init -system_server } security_file:dir { create setattr };
+
+# Maybe that kernel is not needed in here. Check after we have all domains in place.
+neverallow { domain -init -system_server -kernel } security_file:dir { create setattr };
 # Only system_server can create subdirectories and files under /data/security.
 neverallow { domain -system_server } security_file:dir { rename write add_name remove_name rmdir };
 neverallow { domain -system_server } security_file:file { create setattr write append unlink link rename };
@@ -259,8 +283,8 @@ neverallow domain kmem_device:chr_file ~{ create relabelto unlink setattr };
 
 # Only init should be able to configure kernel usermodehelpers or
 # security-sensitive proc settings.
-neverallow { domain -init } usermodehelper:file { append write };
-neverallow { domain -init } proc_security:file { append write };
+neverallow { domain -init -init_t } usermodehelper:file { append write };
+neverallow { domain -init -init_t } proc_security:file { append write };
 
 # No domain should be allowed to ptrace init.
 neverallow domain init:process ptrace;
@@ -277,17 +301,20 @@ neverallow { domain -kernel -init -recovery -vold -uncrypt } block_device:blk_fi
 # Rather force a relabel to a more specific type.
 # init is exempt from this as there are character devices that only it uses.
 # ueventd is exempt from this, as it is managing these devices.
-neverallow { domain -init -ueventd } device:chr_file { open read write };
+
+# Maybe that kernel is not needed in here. Check after we have all domains in place.
+neverallow { domain -init -init_t -ueventd -mce -kernel -unconfined_t } device:chr_file { open read write };
 
 # Limit what domains can mount filesystems or change their mount flags.
 # sdcard_type / vfat is exempt as a larger set of domains need
 # this capability, including device-specific domains.
-neverallow { domain -kernel -init -recovery -vold -zygote } { fs_type -sdcard_type }:filesystem { mount remount relabelfrom relabelto };
+neverallow { domain -kernel -init -init_t -recovery -vold -zygote -systemd_logind_t} { fs_type -sdcard_type }:filesystem { mount remount relabelfrom relabelto };
 
 #
 # Assert that, to the extent possible, we're not loading executable content from
 # outside the rootfs or /system partition except for a few whitelisted domains.
 #
+# Maybe that kernel is not needed in here. Check after we have all domains in place.
 neverallow {
     domain
     -appdomain
@@ -296,19 +323,23 @@ neverallow {
     userdebug_or_eng(`-su')
     -system_server
     -zygote
+    -kernel
 } { file_type -system_file -exec_type }:file execute;
 neverallow {
     domain
     -appdomain # for oemfs
     -recovery # for /tmp/update_binary in tmpfs
+    -unconfined_t
 } { fs_type -rootfs }:file execute;
 
 # Only the init property service should write to /data/property.
-neverallow { domain -init } property_data_file:dir no_w_dir_perms;
-neverallow { domain -init } property_data_file:file no_w_file_perms;
+# Maybe that kernel is not needed in here. Check after we have all domains in place.
+neverallow { domain -init -kernel } property_data_file:dir no_w_dir_perms;
+neverallow { domain -init -kernel } property_data_file:file no_w_file_perms;
 
 # Only recovery should be doing writes to /system
-neverallow { domain -recovery } { system_file exec_type }:dir_file_class_set
+# Maybe that kernel is not needed in here. Check after we have all domains in place.
+neverallow { domain -recovery -kernel } { system_file exec_type }:dir_file_class_set
     { create write setattr relabelfrom append unlink link rename };
 neverallow { domain -recovery -kernel } { system_file exec_type }:dir_file_class_set relabelto;
 
@@ -360,12 +391,14 @@ neverallow {
   -dex2oat
 } dalvikcache_data_file:file no_w_file_perms;
 
+# Maybe that kernel is not needed in here. Check after we have all domains in place.
 neverallow {
   domain
   -init
   -installd
   -dex2oat
   -zygote
+  -kernel
 } dalvikcache_data_file:dir no_w_dir_perms;
 
 # Only system_server should be able to send commands via the zygote socket
@@ -392,7 +425,7 @@ neverallow domain domain:{ shm sem msg msgq } *;
 
 # Do not mount on top of symlinks, fifos, or sockets.
 # Feature parity with Chromium LSM.
-neverallow domain { file_type fs_type dev_type }:{ lnk_file fifo_file sock_file } mounton;
+neverallow { domain -unconfined_t } { file_type fs_type dev_type }:{ lnk_file fifo_file sock_file } mounton;
 
 # Nobody should be able to execute su on user builds.
 # On userdebug/eng builds, only dumpstate, shell, and
@@ -417,7 +450,7 @@ neverallow domain {
 # with text relocations. b/20013628 .
 # neverallow { domain -appdomain } file_type:file execmod;
 
-neverallow { domain -init } proc:{ file dir } mounton;
+neverallow { domain -init -init_t } proc:{ file dir } mounton;
 
 # Ensure that all types assigned to processes are included
 # in the domain attribute, so that all allow and neverallow rules

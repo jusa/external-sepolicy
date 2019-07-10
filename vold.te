@@ -165,6 +165,8 @@ allow vold storage_file:dir mounton;
 
 neverallow { domain -vold } vold_data_file:dir ~{ open create read getattr setattr search relabelto ioctl };
 neverallow { domain -vold } vold_data_file:notdevfile_class_set ~{ relabelto getattr };
-neverallow { domain -vold -init } vold_data_file:dir *;
+# Added kernel, but it may be that kernel is not really the domain in here.
+# Check this when we have more mature env.
+neverallow { domain -vold -init -kernel } vold_data_file:dir *;
 neverallow { domain -vold -init } vold_data_file:notdevfile_class_set *;
 neverallow { domain -vold -init } restorecon_prop:property_service set;

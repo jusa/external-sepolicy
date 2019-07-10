@@ -62,7 +62,11 @@ domain_auto_trans(kernel, init_exec, init)
 
 # The initial task starts in the kernel domain (assigned via
 # initial_sid_contexts), but nothing ever transitions to it.
-neverallow domain kernel:process { transition dyntransition };
+#neverallow domain kernel:process { transition dyntransition };
+#
+# Systemd needs dyntransition for kernel in current RnD environment.
+# See sailfish_kernel.te file.
+neverallow domain kernel:process { transition };
 
 # The kernel domain is never entered via an exec, nor should it
 # ever execute a program outside the rootfs without changing to another domain.
@@ -75,4 +79,6 @@ neverallow domain kernel:process { transition dyntransition };
 #   some other program.  Fix your init.rc file.
 # - You are running an exploit which switched to the init task credentials
 #   and is then trying to exec a shell or other program.  You lose!
-neverallow kernel { file_type fs_type -rootfs }:file { entrypoint execute_no_trans };
+#neverallow kernel { file_type fs_type -rootfs }:file { entrypoint execute_no_trans };
+# Allow execute_no_trans
+neverallow kernel { file_type fs_type -rootfs }:file { entrypoint };
